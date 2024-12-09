@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 圖片生成器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100">
+    <div id="app" class="container mx-auto px-4 py-8">
+        <!-- 標題 -->
+        <div class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-800 mb-2">AI 圖片生成器</h1>
+            <p class="text-gray-600">輸入描述，讓 AI 為您創造獨特的圖片</p>
+        </div>
+
+        <!-- 輸入區域 -->
+        <div class="max-w-2xl mx-auto bg-white rounded-lg shadow-md p-6 mb-8">
+            <div class="mb-4">
+                <textarea 
+                    v-model="prompt"
+                    class="w-full px-3 py-2 text-gray-700 border rounded-lg focus:outline-none focus:border-blue-500"
+                    rows="4"
+                    placeholder="請描述您想要生成的圖片..."
+                ></textarea>
+            </div>
+            <button 
+                @click="generateImage"
+                :disabled="isGenerating"
+                class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                v-text="isGenerating ? '生成中...' : '生成圖片'"
+            >
+            </button>
+        </div>
+
+        <!-- 圖片展示區域 -->
+        <div class="max-w-4xl mx-auto">
+            <!-- 載入中動畫 -->
+            <div v-if="isGenerating" class="text-center py-12">
+                <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+                <p class="mt-4 text-gray-600">正在生成您的圖片，請稍候...</p>
+            </div>
+
+            <!-- 當前生成的圖片 -->
+            <div v-if="currentImage" class="mb-8 bg-white rounded-lg shadow-md overflow-hidden">
+                <img 
+                    :src="currentImage" 
+                    class="w-full h-auto"
+                    alt="生成的圖片"
+                >
+                <div class="p-4">
+                    <p class="text-gray-600 text-sm mb-2" v-text="prompt"></p>
+                    <div class="flex gap-2">
+                        <input 
+                            type="file"
+                            ref="fileInput"
+                            @change="saveAs"
+                            style="display: none"
+                            nwsaveas="generated_image.png"
+                        >
+                        
+                        <button 
+                            @click="showSaveDialog"
+                            class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg"
+                        >
+                            <i class="fas fa-download mr-2"></i>儲存圖片
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 通知提示 -->
+    <div 
+        v-if="notification.show"
+        class="fixed bottom-4 right-4 bg-white shadow-lg rounded-lg px-4 py-3"
+        :class="{'text-green-600': notification.type === 'success', 'text-red-600': notification.type === 'error'}"
+        v-text="notification.message"
+    >
+    </div>
+
+    <script>
+        const { createApp } = Vue
+
+        createApp({
+            data() {
+                return {
+                    prompt: '',
+                    isGenerating: false,
+                    currentImage: null,
+                    notification: {
+                        show: false,
+                        message: '',
+                        type: 'success'
+                    }
+                }
+            },
+            methods: {
+                async generateImage() {
+                    if (!this.prompt) {
+                        this.showNotification('請輸入圖片描述', 'error')
+                        return
+                    }
+
+                    this.isGenerating = true
+                    try {
+                        const response = await fetch('/api/generate', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ prompt: this.prompt })
+                        })
+                        const data = await response.json()
+                        
+                        if (data.error) {
+                            throw new Error(data.error)
+                        }
+                        
+                        this.currentImage = data.image
+                        this.showNotification('圖片生成成功！', 'success')
+                    } catch (error) {
+                        this.showNotification('圖片生成失敗：' + error.message, 'error')
+                    } finally {
+                        this.isGenerating = false
+                    }
+                },
+
+                async showSaveDialog() {
+                    try {
+                        const response = await fetch(this.currentImage);
+                        const blob = await response.blob();
+                        
+                        const url = window.URL.createObjectURL(blob);
+                        
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = `generated_${new Date().getTime()}.png`;
+                        
+                        link.click();
+                        
+                        window.URL.revokeObjectURL(url);
+                        
+                        this.showNotification('開始下載圖片！', 'success');
+                    } catch (error) {
+                        console.error('Save error:', error);
+                        this.showNotification('儲存失敗：' + error.message, 'error');
+                    }
+                },
+
+                saveAs(event) {
+                    const file = event.target.files[0];
+                    if (file) {
+                        this.showNotification('圖片已儲存！', 'success');
+                    }
+                    this.$refs.fileInput.value = '';
+                },
+
+                showNotification(message, type = 'success') {
+                    this.notification = {
+                        show: true,
+                        message,
+                        type
+                    }
+                    setTimeout(() => {
+                        this.notification.show = false
+                    }, 3000)
+                }
+            }
+        }).mount('#app')
+    </script>
+</body>
+</html>
